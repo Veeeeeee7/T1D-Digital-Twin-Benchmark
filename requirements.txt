@@ -1,0 +1,45 @@
+# =============================================================================
+# A decision-targeted benchmark for type-1 diabetes digital twins — dependencies
+#
+# Install:   pip install -r requirements.txt
+#
+# The floors below are the safe minimums; the "tested" versions are what this
+# environment ran. Pin to those if you need an exact reproduction.
+# =============================================================================
+
+# --- core scientific stack ---------------------------------------------------
+numpy>=1.24          # tested 2.4.4
+scipy>=1.10          # tested 1.17.1
+pandas>=1.5          # tested 3.0.2
+matplotlib>=3.6      # tested 3.10.8
+
+# --- ground-truth simulator (UVA/Padova) -------------------------------------
+# simglucose pulls in gym + pathos transitively; gymnasium is its RL env API.
+simglucose==0.2.11   # PINNED: the vpatient/Quest CSV layout is version-sensitive,
+                     # and the version is hashed into the data fingerprint
+gymnasium>=0.29      # tested 0.29.1
+
+# --- twinning methods --------------------------------------------------------
+torch>=2.2           # tested 2.12.0   (identify_sbi, identify_neural; CPU is enough)
+sbi>=0.23,<0.27      # tested 0.26.1   (neural posterior estimation)
+
+# --- runtime -----------------------------------------------------------------
+# setuptools is a DIRECT dependency: experiments/patients.py and t1d_twin/sensor.py
+# import pkg_resources to locate simglucose's bundled parameter CSVs. Python >=3.12
+# venvs do not ship setuptools, and setuptools >=81 removes pkg_resources, so it
+# must be installed and held below 81.
+setuptools>=68,<81
+
+# =============================================================================
+# Notes
+# -----------------------------------------------------------------------------
+# torch: the line above installs the default CPU/GPU wheel for your platform.
+#   No step here uses a GPU — parallelism is across the 30 patients, and both
+#   torch users pin themselves to one intra-op thread. A CPU wheel is fine.
+#
+# sbi: capped below 0.27 because identify_sbi.py uses the SNPE alias and the
+#   reject_outside_prior=False sampling kwarg; verify before moving past it.
+#
+# Python: tested on CPython 3.12. simglucose's gym dependency can be awkward on
+#   very new Python — 3.10–3.12 is the safe range.
+# =============================================================================
