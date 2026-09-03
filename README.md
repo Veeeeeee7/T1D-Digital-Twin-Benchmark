@@ -17,7 +17,7 @@ experiments/
   run_benchmark.py        DRIVER: fit -> predict -> score
   merge_results.py        unions per-experiment result tables into one
   analyze_benchmark.py    Friedman -> Holm-corrected Wilcoxon -> benchmark_report.md
-  plot_significance.py    the same post-hoc drawn as a paper figure
+  plot_critical_difference.py  the same post-hoc drawn as a critical difference diagram (the paper figure)
   replication_ceiling.py  determinism check
   output_paths.py         on-disk layout
   logsetup.py             quiet/verbose control (quiet is the default)
@@ -74,7 +74,7 @@ $T1D_OUTPUT_ROOT/
       benchmark_long.csv                   one row per (patient, day, treatment, method)
       benchmark_decisions.csv              one row per (patient, day, method)
       benchmark_report.md                  the analysis
-      significance_diagram.{pdf,png}       the paper figure
+      critical_difference_diagram.{pdf,png}  the paper figure
       replication_ceiling{,_days}.csv      the determinism check
   sbi_logs/<tag>/                          TensorBoard traces from SBI training
 ```
@@ -157,10 +157,10 @@ python -m experiments.analyze_benchmark \
 
 ```bash
 T1D_EXPERIMENT=combined
-python -m experiments.plot_significance --metrics spearman,rmse
+python -m experiments.plot_critical_difference --metrics spearman,rmse
 ```
 
-Writes `significance_diagram.pdf` and `.png` beside the report. It imports the analysis module's post-hoc helpers rather than recomputing them, so the figure and the tables cannot disagree. `--width` defaults to 5.5 in.
+Draws one critical difference diagram per metric (Demšar 2006, in the Wilcoxon–Holm form: a bar joins every group of methods the Holm-corrected pairwise tests cannot separate, with no Nemenyi critical-difference interval) and writes it as `critical_difference_diagram.pdf` and `.png` beside the report. It imports the analysis module's post-hoc helpers rather than recomputing them, so the figure and the tables cannot disagree. `--width` defaults to 5.5 in.
 
 `--methods` draws a subset and corrects Holm over exactly that subset. Use it whenever the merged vintage carries arms a paper does not report, or the figure's _p_-values will silently disagree with the tables.
 

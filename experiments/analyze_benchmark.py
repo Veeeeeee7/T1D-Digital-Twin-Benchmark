@@ -24,7 +24,8 @@ METRICS = ("spearman", "regret_norm", "regret", "rmse", "mard")
 #: Metrics the omnibus comparison runs on.
 OMNIBUS_METRICS = ("spearman", "regret_norm", "rmse", "mard")
 
-#: Canonical DISPLAY order for the arms, used by both the report and the paper figure.
+#: Canonical DISPLAY order for the arms, used by both the report and the paper figure
+#: (``plot_critical_difference``).
 METHOD_ORDER = ("mcmc", "sbi", "ukf", "linear", "neural", "prior")
 
 #: Display names for the arms.
@@ -220,9 +221,9 @@ def posthoc_table(pp: dict, methods, metric: str, alpha: float = 0.05) -> list[s
     return lines
 
 
-def significance_diagram(pp: dict, methods, metric: str,
-                         alpha: float = 0.05) -> list[str]:
-    """ASCII significance diagram: mean ranks, with non-different methods joined."""
+def critical_difference_diagram(pp: dict, methods, metric: str,
+                                alpha: float = 0.05) -> list[str]:
+    """ASCII critical difference diagram: mean ranks, unseparated methods joined."""
     used, idx_pairs, deltas, raw, holm = holm_pairwise(pp, metric, methods)
     if not used:
         return []
@@ -238,7 +239,7 @@ def significance_diagram(pp: dict, methods, metric: str,
 
     order = np.argsort(R)                       # best (lowest mean rank) first
     lines = ["```",
-             f"significance diagram — {metric}   (N={N} patients, k={k} methods)",
+             f"critical difference diagram — {metric}   (N={N} patients, k={k} methods)",
              f"bars = NOT significantly different, pairwise Wilcoxon + Holm at "
              f"alpha={alpha}",
              "rank 1 = best; the axis position is the mean within-patient rank.",
@@ -401,15 +402,17 @@ def main() -> None:
             L += ["", f"### 2.{OMNIBUS_METRICS.index(metric) + 1} post-hoc — "
                       f"`{metric}` (Friedman p = {_fmt(p, 4)})", ""]
             L += posthoc_table(pp, methods, metric)
-        L += ["", "### Significance diagram", "",
-              "Mean within-patient rank, best on the left. Methods joined by a "
+        L += ["", "### Critical difference diagram", "",
+              "Demšar's critical difference diagram in the Wilcoxon–Holm form: "
+              "mean within-patient rank, best on the left. Methods joined by a "
               "bar are NOT significantly different by pairwise Wilcoxon with a "
               "Holm correction — the same test as the post-hoc tables above, so "
-              "the figure and the tables cannot disagree. Rank only positions a "
-              "method on the axis; it decides nothing.",
+              "the diagram and the tables cannot disagree. No Nemenyi "
+              "critical-difference interval is drawn; rank only positions a "
+              "method on the axis and decides nothing.",
               ""]
         for metric in ("spearman", "rmse"):
-            L += significance_diagram(pp, methods, metric)
+            L += critical_difference_diagram(pp, methods, metric)
             L += [""]
     L += ["", "## 3. DT² — does trajectory fidelity predict decision quality?", "",
           "Rank correlation across patients between fidelity (negated, so higher "
