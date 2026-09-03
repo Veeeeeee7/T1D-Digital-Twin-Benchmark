@@ -125,7 +125,7 @@ Per-method identification budgets are fixed and are not command-line options. Th
 | `mcmc`     | published method | one 22 h window (264 CGM samples)    |                          8 h 18 m |
 | `sbi`      | published method | one 22 h window (264 samples)        |                             245 s |
 | `ukf`      | published method | one 22 h window (264 samples)        |                             181 s |
-| `prior`    | control          | none                                 |                             175 s |
+| `prior`    | baseline         | none                                 |                             175 s |
 | `neural`   | baseline         | all 30 training days (8,640 samples) |                             2.4 s |
 | `linear`   | baseline         | all 30 training days (8,640 samples) |                             0.1 s |
 

@@ -210,7 +210,7 @@ def _fit_linear(runs, seed: int, cfg: dict):
 
 
 def _fit_prior(run, seed: int, cfg: dict):
-    """The no-personalization control. ``run`` supplies ``Ib`` and nothing else."""
+    """The no-personalization baseline. ``run`` supplies ``Ib`` and nothing else."""
     from t1d_twin.identify_prior import identify_twin_from_run
     return identify_twin_from_run(run, dt=run.dt, seed=seed,
                                   sensor_name=SC.SENSOR_NAME)

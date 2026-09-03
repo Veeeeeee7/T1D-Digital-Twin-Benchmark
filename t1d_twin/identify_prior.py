@@ -1,4 +1,4 @@
-"""Prior (population) twin — the benchmark's NO-PERSONALIZATION control."""
+"""Prior (population) twin — the benchmark's NO-PERSONALIZATION baseline."""
 from __future__ import annotations
 
 import numpy as np
