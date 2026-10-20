@@ -71,12 +71,7 @@ DEFAULT_FIT_DAYS = 1
 
 
 def _warm_font_cache() -> None:
-    """Build matplotlib's font cache in the parent before any worker spawns.
-
-    simglucose imports matplotlib, and a ``spawn`` pool re-imports it in every
-    child; a cold cache then has N workers building it at once in one
-    MPLCONFIGDIR, which can deadlock. Touching it here makes it warm for them.
-    """
+    """Build matplotlib's font cache before spawning, so workers cannot race to build it."""
     os.environ.setdefault("MPLBACKEND", "Agg")
     os.environ.setdefault(
         "MPLCONFIGDIR",
@@ -423,7 +418,7 @@ def main() -> None:
               f"{np.nanmean([r['mard'] for r in rows]):8.1f} "
               f"{sum(r['degenerate'] for r in rows):6d} "
               f"{sum(r.get('nonfinite', 0) for r in rows):7d}")
-    print(f"\n[bench] next: python -m experiments.analyze_benchmark")
+    print("\n[bench] next: python -m experiments.analyze_benchmark")
     if failed or errs:
         raise SystemExit(1)
 

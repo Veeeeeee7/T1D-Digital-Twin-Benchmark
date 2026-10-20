@@ -1,8 +1,12 @@
-# Evaluating Type-1 Diabetes Digital Twins by Decision Transfer
+# Evaluating Type-1 Diabetes Digital Twins by Decision Quality
 
-Code to reproduce the benchmark. Fits a digital twin to a virtual patient's CGM under one insulin treatment, ask it to predict glucose under 20 treatments it has never seen, and score it on whether it ranks those treatments the way the real patient would, not only on how closely it tracks glucose.
+[![arXiv](https://img.shields.io/badge/arXiv-coming%20soon-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX)
 
-Everything runs on the 30 virtual subjects distributed with [`simglucose`](https://github.com/jxx123/simglucose) (UVA/Padova). There is no patient data anywhere in this repository, and no component issues a dose recommendation.
+**Paper:** [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX)
+
+Code for the evaluation protocol and benchmark in the paper. A digital twin (DT) for type 1 diabetes (T1D) is fit to a virtual patient's CGM under their baseline treatment, then generates glucose trajectories under 20 counterfactual insulin treatments it has never seen. A glycemic risk kernel scores each trajectory, which gives the DT's ranking of the candidate treatments. The benchmark scores the DT on **decision quality**, meaning whether that ranking agrees with the patient's true ranking, and reports it alongside **prediction accuracy**, meaning how closely the predicted glucose matches the true glucose.
+
+Everything runs on the 30 virtual patients that ship with [`simglucose`](https://github.com/jxx123/simglucose) (UVA/Padova). There is no patient data in this repository. A strong score on this benchmark is not clinical validation, and no result here is treatment guidance.
 
 ---
 
@@ -10,40 +14,42 @@ Everything runs on the 30 virtual subjects distributed with [`simglucose`](https
 
 ```
 experiments/
-  patients.py             the 30 built-in subjects, the basal-bolus controller, and the plant run loop
-  scenario.py             cadence, scored window, candidate treatment grid, meals
-  trajectories.py         DATA: generates and ships the train/test .npz files
-  scoring.py              metric definitions and the two table writers
-  run_benchmark.py        DRIVER: fit -> predict -> score
-  merge_results.py        unions per-experiment result tables into one
-  analyze_benchmark.py    Friedman -> Holm-corrected Wilcoxon -> benchmark_report.md
-  plot_critical_difference.py  the same post-hoc drawn as a critical difference diagram (the paper figure)
-  replication_ceiling.py  determinism check
-  output_paths.py         on-disk layout
-  logsetup.py             quiet/verbose control (quiet is the default)
+  patients.py                  the 30 virtual patients, the basal-bolus controller, and the simulator run loop
+  scenario.py                  sample interval, scored window, candidate treatments, meals
+  trajectories.py              DATA: generates and caches the training and evaluation .npz files
+  scoring.py                   metric definitions and the two table writers
+  run_benchmark.py             DRIVER: fit -> predict -> score
+  merge_results.py             combines per-method result tables into one
+  analyze_benchmark.py         Friedman -> Holm-corrected pairwise Wilcoxon -> benchmark_report.md
+  plot_critical_difference.py  critical difference diagrams (the paper figure)
+  sensitivity.py               leave-one-patient-out and leave-one-age-group-out sensitivity
+  replication_ceiling.py       checks that the ground truth is deterministic
+  output_paths.py              on-disk layout
+  logsetup.py                  quiet/verbose control (quiet is the default)
 requirements.txt
-t1d_twin/                 physics, twinning methods, and metric primitives
-  replaybg_model.py       9-state ReplayBG ODE, fixed-step RK4 state order [Isc1, Isc2, Ip, Qsto1, Qsto2, Qgut, G, X, IG]
-  replaybg_priors.py      the published Cappon prior; numpy sampler + torch wrapper
-  value.py                Magni risk kernel and the reward R
-  sensor.py               UVA/Padova (Breton-Kovatchev) CGM noise
-  units.py                simglucose <-> ReplayBG unit conversions
-  simglucose_adapter.py   RunResult, the container every run is returned in
-  copula.py               multivariate t-copula over an MCMC chain
-  twin.py                 the Twin interface every method implements
-  identify_mcmc.py        METHOD: MCMC (ReplayBG)
-  identify_sbi.py         METHOD: SBI / neural posterior estimation
-  identify_ukf.py         METHOD: joint state-parameter unscented Kalman filter
-  identify_linear.py      BASELINE: ridge finite-impulse-response regression
-  identify_neural.py      BASELINE: MLP over identify_linear's design matrix
-  identify_prior.py       BASELINE: ReplayBG replay over prior draws, reads no CGM
+t1d_twin/                      the physiological model, the DT methods, and metric primitives
+  replaybg_model.py            the nine-state, eight-parameter ReplayBG ODE, fixed-step RK4
+                               state order [Isc1, Isc2, Ip, Qsto1, Qsto2, Qgut, G, X, IG]
+  replaybg_priors.py           the published ReplayBG prior
+  value.py                     the Magni risk kernel and the reward R
+  sensor.py                    Breton-Kovatchev CGM noise
+  units.py                     simglucose <-> ReplayBG unit conversions
+  simglucose_adapter.py        RunResult, the container every simulator run is returned in
+  copula.py                    multivariate t-copula over an MCMC chain
+  twin.py                      the DT interface every method implements
+  identify_mcmc.py             PUBLISHED METHOD: Markov chain Monte Carlo (MCMC), ReplayBG
+  identify_sbi.py              PUBLISHED METHOD: simulation-based inference (SBI), neural posterior estimation
+  identify_ukf.py              PUBLISHED METHOD: unscented Kalman filter (UKF), joint state-parameter filtering
+  identify_linear.py           BASELINE: linear response model (Linear), ridge regression on lagged inputs
+  identify_neural.py           BASELINE: neural response model (Neural), MLP on Linear's features
+  identify_prior.py            BASELINE: average patient (Prior), replay over the ReplayBG prior, reads no CGM
 ```
 
 ---
 
 ## 2. Environment
 
-Python 3.12 and everything is CPU-only — see [§7](#7-hardware).
+Python 3.12. Everything runs on CPU — see [§8](#8-hardware).
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -54,7 +60,7 @@ pip install -r requirements.txt
 
 ## 3. Configuration
 
-Four environment variables set the on-disk layout. Nothing else is configurable by path, and no path is hard-coded.
+Five environment variables set the on-disk layout and logging. Nothing else is configurable by path, and no path is hard-coded.
 
 | variable          | default  | meaning                                                                               |
 | ----------------- | -------- | ------------------------------------------------------------------------------------- |
@@ -68,22 +74,51 @@ The resulting tree:
 
 ```
 $T1D_OUTPUT_ROOT/
-  data/<data-date>/train/<patient>.npz     30 identification days, training treatment
-  data/<data-date>/test/<patient>.npz      10 days x 20 candidate treatments
+  data/<data-date>/train/<patient>.npz     30 training days under the baseline treatment
+  data/<data-date>/test/<patient>.npz      10 evaluation days x 20 candidate treatments
   results/<result-date>/<experiment>/
-      benchmark_long.csv                   one row per (patient, day, treatment, method)
-      benchmark_decisions.csv              one row per (patient, day, method)
-      benchmark_report.md                  the analysis
+      benchmark_long.csv                     one row per (patient, day, treatment, method)
+      benchmark_decisions.csv                one row per (patient, day, method)
+      benchmark_report.md                    the statistical analysis
       critical_difference_diagram.{pdf,png}  the paper figure
-      replication_ceiling{,_days}.csv      the determinism check
+      sensitivity_{report.md,pairs.csv,claims.csv}  the sensitivity analysis
+      replication_ceiling{,_days}.csv        the determinism check
   sbi_logs/<tag>/                          TensorBoard traces from SBI training
 ```
 
 ---
 
-## 4. Reproducing the Benchmark
+## 4. Benchmark Design
 
-The pipeline is four steps. Set the environment once per shell:
+| Component             | Choice                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| Simulator             | `simglucose` (UVA/Padova), treated as a black box                                                         |
+| Patients              | 30 virtual patients: 10 adults, 10 adolescents, 10 children                                               |
+| CGM                   | Breton-Kovatchev noise, 5 min interval, 288 samples per 24 h day                                          |
+| Meals                 | `simglucose`'s `RandomScenario`, one independent draw per day, shared by every treatment and method       |
+| Baseline treatment π₀ | the patient's own basal rate, carbohydrate ratio and correction factor                                    |
+| Candidate treatments  | 20 counterfactuals: meal bolus or basal rate scaled by −50% to +50% in 10% steps, the other unchanged     |
+| Correction bolus      | computed from noise-free interstitial glucose (IG), so the true ranking is deterministic                  |
+| Treatment switch      | every run starts on π₀ at midnight and switches to the candidate at 05:00, when the scored window opens   |
+| Risk kernel           | reward R = negative total Magni risk over the scored 24 h window, glucose clipped to [40, 400] mg/dL      |
+| Training data         | 30 independent identification days under π₀                                                              |
+| Evaluation data       | 10 independent identification days × 20 candidate treatments                                              |
+
+Every metric is computed per patient and evaluation day on noise-free IG:
+
+| Family              | Metric      | Definition                                                                    |
+| ------------------- | ----------- | ----------------------------------------------------------------------------- |
+| Prediction accuracy | RMSE        | root mean squared error between predicted and true IG, averaged over the 20 treatments |
+|                     | MARD        | mean absolute relative difference, averaged over the 20 treatments            |
+| Decision quality    | Spearman    | rank correlation between the DT's and the patient's ranking of the treatments (**primary**) |
+|                     | Regret      | true reward of the true best treatment minus that of the DT's top treatment   |
+|                     | Regret Norm | Regret divided by the range of true rewards across the treatments             |
+
+---
+
+## 5. Reproducing the Benchmark
+
+The pipeline is five steps. Set the environment once per shell:
 
 ```bash
 export T1D_OUTPUT_ROOT="$PWD/_out"
@@ -98,51 +133,51 @@ T1D_EXPERIMENT=benchmark
 python -m experiments.trajectories --jobs 30
 ```
 
-30 subjects × (30 training days + 10 test days × 20 treatments), each an independent 29h run from steady state windowed 05:00 → 05:00. Files are written atomically and cached. A re-run with the same fingerprint is a no-op, and `--force` rebuilds. A lock file refuses two concurrent jobs writing the same data date.
+30 patients × (30 training days + 10 evaluation days × 20 treatments). Each day is an independent 29 h run from steady state at midnight; the first 5 h are dropped and the 24 h from 05:00 are kept. Files are written atomically and cached, so a re-run with the same configuration is a no-op and `--force` rebuilds. A lock file refuses two concurrent jobs writing the same data date.
 
 Useful flags: `--kinds adult,adolescent,child`, `--limit N`, `--train-days`, `--test-days`.
 
-### Step 2 — Run the Methods
+### Step 2 — Run the DT Methods
 
-`mcmc` costs roughly 45× the other five experiments combined, so run it on its own and merge. This is exactly how the reported runs were produced.
+MCMC costs roughly 45× the other five methods combined, so run it on its own and merge. This is how the paper's results were produced.
 
 ```bash
-# the five fast arms, one job, ~14 min wall at 30 workers
+# the five fast methods, one job, ~14 min wall at 30 workers
 T1D_EXPERIMENT=benchmark
 python -m experiments.run_benchmark --methods sbi,ukf,linear,neural,prior --jobs 30
 
-# mcmc alone, ~8 h 30 m wall at 30 workers
+# MCMC alone, ~8 h 30 m wall at 30 workers
 T1D_EXPERIMENT=mcmc
 python -m experiments.run_benchmark --methods mcmc --jobs 30
 ```
 
-Each patient is fit from a single window of training day 0, then predicts all 10 × 20 test cells. The driver exits non-zero if any patient or method raised, and prints which. `--traceback` keeps the full traceback. `--seed` (default 42) sets every method's seed.
+Each DT is fit once from its identification window and then generates the 10 × 20 evaluation trajectories. The driver exits non-zero if any patient or method raised, and prints which. `--traceback` keeps the full traceback. `--seed` (default 42) sets every method's seed.
 
-Per-method identification budgets are fixed and are not command-line options. They are declared in `run_benchmark.METHOD_FIT_HOURS` / `METHOD_FIT_DAYS` so a method gets exactly what its own paper documents:
+Each method uses the amount of training data its original implementation prescribes. The identification windows are fixed in `run_benchmark.METHOD_FIT_HOURS` / `METHOD_FIT_DAYS` and are not command-line options:
 
-| Experiment | Role             | Identification Window                | Fit + Score (per patient, 1 core) |
-| ---------- | ---------------- | ------------------------------------ | --------------------------------: |
-| `mcmc`     | published method | one 22 h window (264 CGM samples)    |                          8 h 18 m |
-| `sbi`      | published method | one 22 h window (264 samples)        |                             245 s |
-| `ukf`      | published method | one 22 h window (264 samples)        |                             181 s |
-| `prior`    | baseline         | none                                 |                             175 s |
-| `neural`   | baseline         | all 30 training days (8,640 samples) |                             2.4 s |
-| `linear`   | baseline         | all 30 training days (8,640 samples) |                             0.1 s |
+| Method                         | Role             | Identification Window                    | Fit + Score (per patient, 1 core) |
+| ------------------------------ | ---------------- | ---------------------------------------- | --------------------------------: |
+| `mcmc` — MCMC                  | published method | one 22 h window (264 CGM samples)        |                          8 h 18 m |
+| `sbi` — SBI                    | published method | one 22 h window (264 CGM samples)        |                             245 s |
+| `ukf` — UKF                    | published method | one 22 h window (264 CGM samples)        |                             181 s |
+| `prior` — Average patient      | baseline         | none (reads no CGM)                      |                             175 s |
+| `neural` — Neural              | baseline         | all 30 training days (8,640 CGM samples) |                             2.4 s |
+| `linear` — Linear              | baseline         | all 30 training days (8,640 CGM samples) |                             0.1 s |
 
-Costs are medians over the 30 subjects and cover the fit _and_ all 200 test-cell predictions; see [§7](#7-hardware).
+Costs are medians over the 30 patients and cover the fit _and_ all 200 predicted trajectories; see [§8](#8-hardware).
 
-### Step 3 — Merge the Arms and Analyze
+### Step 3 — Merge the Methods and Run the Statistical Analysis
 
 ```bash
 T1D_EXPERIMENT=benchmark
 python -m experiments.merge_results --sources benchmark,mcmc --into combined --analyze
 ```
 
-`merge_results` unions the namespaces into a third one, refusing duplicate arms, ragged `(patient, day)` grids and schema drift, and never editing a source. `--sources` also takes `<date>/<namespace>` to pull an arm from a different result date, or an absolute path. `--analyze` runs the analysis over the merged table, which is the only correct place to run it: the Holm correction is computed over the roster present, so analyzing arms separately and pasting the results together produces _p_-values that do not match any stated multiplicity burden.
+`merge_results` combines the result tables into a third namespace. It refuses duplicate methods, mismatched `(patient, day)` grids and schema drift, and it never edits a source. `--sources` also takes `<date>/<namespace>` to pull a method from a different result date, or an absolute path. `--analyze` runs the analysis over the merged table, which is the only correct place to run it: the Holm correction is computed over the methods present, so analyzing methods separately and pasting the results together gives _p_-values that match no stated number of comparisons.
 
-`T1D_EXPERIMENT` must be set for `merge_results` to resolve the date directory. It derives the results root from the namespaced path.
+`T1D_EXPERIMENT` must be set for `merge_results` to resolve the date directory.
 
-The analysis is the Demšar (2006) protocol: an omnibus Friedman test per metric on within-patient ranks, then post-hoc pairwise Wilcoxon signed-rank with Holm correction, only where Friedman rejects. The unit of analysis is the patient with test days averaged within patient first, because patient difficulty dominates the between-method effect.
+The statistical analysis follows Demšar (2006). Metrics are first averaged across evaluation days within each patient. An omnibus Friedman test runs per metric on the within-patient ranks of the methods, and, only where it rejects at α = 0.05, pairwise Wilcoxon signed-rank tests with a Holm correction identify which pairs differ.
 
 To re-run the analysis alone over tables you already have:
 
@@ -153,22 +188,31 @@ python -m experiments.analyze_benchmark \
     --out       _out/results/2026-08-24/combined/benchmark_report.md
 ```
 
-### Step 4 — Figures
+### Step 4 — Critical Difference Diagrams
 
 ```bash
 T1D_EXPERIMENT=combined
-python -m experiments.plot_critical_difference --metrics spearman,rmse
+python -m experiments.plot_critical_difference
 ```
 
-Draws one critical difference diagram per metric (Demšar 2006, in the Wilcoxon–Holm form: a bar joins every group of methods the Holm-corrected pairwise tests cannot separate, with no Nemenyi critical-difference interval) and writes it as `critical_difference_diagram.pdf` and `.png` beside the report. It imports the analysis module's post-hoc helpers rather than recomputing them, so the figure and the tables cannot disagree. `--width` defaults to 5.5 in.
+Draws one critical difference diagram per metric, RMSE on top and Spearman below, the primary metric of each family. Each method sits at its mean rank across patients (1 is best). A bar joins the methods that the Holm-corrected pairwise Wilcoxon tests cannot separate; a filled circle marks a member of the group, and an open circle marks a method the bar passes over but does not include. No Nemenyi critical-difference interval is drawn. The figure is written as `critical_difference_diagram.pdf` and `.png` beside the report. It imports the analysis module's tests rather than recomputing them, so the figure and the tables cannot disagree. `--metrics` picks the panels and `--width` defaults to 5.5 in.
 
-`--methods` draws a subset and corrects Holm over exactly that subset. Use it whenever the merged vintage carries arms a paper does not report, or the figure's _p_-values will silently disagree with the tables.
+`--methods` draws a subset and corrects Holm over exactly that subset. Use it whenever the merged table carries methods a figure should not show, or the figure's _p_-values will silently disagree with the tables.
+
+### Step 5 — Sensitivity Analysis
+
+```bash
+T1D_EXPERIMENT=combined
+python -m experiments.sensitivity
+```
+
+Repeats the entire statistical analysis with each patient left out in turn (30 repetitions on 29 patients), and again with each age group of 10 patients left out (3 repetitions on 20), and reports how often each comparison stated in the paper's results still holds. Writes `sensitivity_report.md`, `sensitivity_pairs.csv` and `sensitivity_claims.csv` beside the decisions table. `--decisions` points it at a different table.
 
 ---
 
-## 5. Verifying the Plant is Deterministic
+## 6. Verifying the Ground Truth Is Deterministic
 
-The correction bolus fires on noise-free interstitial glucose rather than on the CGM reading, which makes the plant deterministic given its seed and the true ranking a property of the patient and meals alone. `replication_ceiling` proves it: it re-runs the ground truth under fresh sensor seeds and scores each replicate against the shipped test set exactly as a method is scored. A perfect twin should therefore score exactly 1.0.
+The correction bolus is computed from noise-free IG rather than from the CGM reading, so the delivered insulin, and therefore the patient's true ranking, is a deterministic property of the patient, the meals and the treatment, regardless of the sensor seed. `replication_ceiling` checks this: it re-runs the ground truth under fresh sensor seeds and scores each replicate against the cached evaluation data exactly as a DT is scored. A DT that reproduced the simulator exactly would score Spearman 1.0.
 
 ```bash
 T1D_EXPERIMENT=ceiling
@@ -182,13 +226,13 @@ max_spearman == 1        regret_norm_floor == 0
 rmse_floor == 0          mard_floor == 0        reference re-run drift == 0
 ```
 
-`--verify` additionally re-runs the reference seed and reports the maximum IG drift from the shipped bytes. Anything but exactly `0.0` voids the whole dataset, and the driver exits 2.
+`--verify` additionally re-runs the reference seed and reports the maximum IG drift from the cached bytes. Anything but exactly `0.0` invalidates the whole dataset, and the driver exits 2.
 
 ---
 
-## 6. Smoke Test (~1 minute)
+## 7. Smoke Test (~1 minute)
 
-Before committing to a full run, test every experiment end to end on one patient, one day:
+Before a full run, test the pipeline end to end on one patient and one day:
 
 ```bash
 export T1D_OUTPUT_ROOT=/tmp/t1d_smoke T1D_DATA_DATE=smoke T1D_RESULT_DATE=smoke
@@ -205,69 +249,61 @@ T1D_EXPERIMENT=ceiling   python -m experiments.replication_ceiling \
     --kinds adult --limit 1 --train-days 1 --test-days 1 --seeds 1 --verify
 ```
 
-Reduced budgets are a plumbing check. Never quote a number from one — a smoke-sized SBI budget in particular under-trains badly.
+These reduced budgets only check that the pipeline runs. Never quote a number from one; a smoke-sized SBI training set in particular under-trains badly.
 
 ---
 
-## 7. Hardware
+## 8. Hardware
 
-CPU only. No step uses a GPU, and adding one does not help. Parallelism is across the 30 patients, `sbi`'s flow and `neural`'s 9,793-parameter MLP are both tiny, and both pin torch to one intra-op thread so the workers do not oversubscribe each other.
+CPU only. No step uses a GPU, and adding one does not help. Parallelism is across the 30 patients; SBI's flow and Neural's 9,793-parameter MLP are both small, and both pin torch to one thread so the workers do not oversubscribe each other.
 
-`--jobs N` spawns N worker processes, one patient each. Scaling is linear in the number of patients per wave, so 30 workers finishes the cohort in one wave and 8 workers takes four.
+`--jobs N` spawns N worker processes, one patient each. Wall clock scales with the number of waves, so 30 workers finish the cohort in one wave and 8 workers take four.
 
-### What the Reported Runs Ssed
+### What the Paper's Runs Used
 
-An internal SLURM cluster of 64-core, 512 GB nodes. Each job requested 30 cores and 128 GB, one worker per patient, so the whole cohort is fit and scored concurrently.
+An internal SLURM cluster of 64-core, 512 GB nodes. Each job requested 30 cores and 128 GB with one worker per patient, so the whole cohort is fit and scored concurrently.
 
-### Measured cost
+### Measured Cost
 
-Per-patient fit-and-score cost on a **single core**, median over the 30 subjects:
+Cost of fitting one patient and scoring all 20 candidate treatments on a **single core**, median over the 30 patients:
 
 |                  |     MCMC |   SBI |   UKF | Prior | Neural | Linear |
 | ---------------- | -------: | ----: | ----: | ----: | -----: | -----: |
 | cost per patient | 8 h 18 m | 245 s | 181 s | 175 s |  2.4 s |  0.1 s |
 
-Aggregated by jobs:
+By job:
 
-| job                                                                                | wall clock | core-hours |
-| ---------------------------------------------------------------------------------- | ---------: | ---------: |
-| trajectory cache — 30 patients × (30 training days + 10 test days × 20 treatments) |    1,182 s |        9.9 |
-| the five fast arms, one job                                                        |      861 s |        5.5 |
-| `mcmc`, separately                                                                 |   8 h 30 m |        249 |
-| **total**                                                                          |            |    **264** |
+| job                                                                                     | wall clock | core-hours |
+| --------------------------------------------------------------------------------------- | ---------: | ---------: |
+| trajectory cache — 30 patients × (30 training days + 10 evaluation days × 20 treatments) |    1,182 s |        9.9 |
+| the five fast methods, one job                                                          |      861 s |        5.5 |
+| MCMC, separately                                                                        |   8 h 30 m |        249 |
+| **total**                                                                               |            |    **264** |
 
 ---
 
-## 8. Output schema
+## 9. Output Schema
 
 `benchmark_long.csv` — one row per `(patient, day, treatment, method)`:
 
 `patient, day, therapy, method, true_reward, pred_reward, true_rank, pred_rank, rmse, mard`
 
-`benchmark_decisions.csv` — one row per `(patient, day, method)` (this is the table the analysis reads):
+`benchmark_decisions.csv` — one row per `(patient, day, method)`; this is the table the analysis reads:
 
 `patient, day, method, spearman, regret, regret_norm, rmse, mard, true_best, pred_best, n_therapies, degenerate, nonfinite`
 
-Decision-quality metrics are `spearman` (primary), `regret` and `regret_norm`. Prediction accuracy is `rmse` and `mard`. Rank 1 is best. All metrics are computed on noise-free interstitial glucose over the scored 24 h window, with glucose clipped to [40, 400] mg/dL before the risk kernel is applied.
+The column names use `therapy` for a treatment. Decision quality metrics are `spearman` (primary), `regret` and `regret_norm`; prediction accuracy metrics are `rmse` and `mard`. Rank 1 is best. All metrics are computed on noise-free IG over the scored 24 h window.
 
 ---
 
-## 9. Adding a method
+## 10. Adding a DT Method
 
-A twinning method is any input-conditioned predictor that can answer _what would this patient's glucose be under treatment π?_ for arbitrary π. That is the only admission requirement. No parameter vector, no states and no physiological model are assumed. Implement `t1d_twin.twin.Twin` (`predict_ig` and `summary`; `generate_cgm` comes from the base class), expose an `identify_twin_from_run(run, dt=..., seed=...)` entry point, then register the arm in four places in `experiments/run_benchmark.py`: `ALL_METHODS`, a `_fit_*` function with its branch in `_one`, `METHOD_COVARIATES`, `METHOD_FIT_HOURS` (and `METHOD_FIT_DAYS` if it consumes more than one day). Lastly, add it to `METHOD_ORDER` and
-`PRETTY_METHOD` in `experiments/analyze_benchmark.py` so the report and the figure label it.
+A DT method is anything that maps a patient's CGM, recorded under the baseline treatment, to a DT, and a DT is anything that maps the carbohydrate and insulin rates delivered under a treatment to a predicted glucose trajectory. Those are the only requirements. No states, parameter vector or physiological model are assumed, so mechanistic and black-box methods are scored identically.
+
+Implement `t1d_twin.twin.Twin` (`predict_ig` and `summary`; `generate_cgm` comes from the base class) and expose an `identify_twin_from_run(run, dt=..., seed=...)` entry point. Then register the method in `experiments/run_benchmark.py`: `ALL_METHODS`, a `_fit_*` function with its branch in `_one`, `METHOD_COVARIATES`, `METHOD_FIT_HOURS`, and `METHOD_FIT_DAYS` if it uses more than one day. Finally, add it to `METHOD_ORDER` and `PRETTY_METHOD` in `experiments/analyze_benchmark.py` so the report and the figure label it.
 
 ---
 
-## 10. Citing
+## 11. Citing
 
-If you use this benchmark, please cite the paper. The methods it evaluates are reimplementations of published work and should be cited alongside it:
-
-- **ReplayBG / MCMC** — Cappon et al., _ReplayBG: A Digital Twin-Based Methodology to Identify a Personalized Model from Type 1 Diabetes Data and Simulate Glucose Concentrations to Assess Alternative Therapies_, IEEE TBME, 2023.
-- **SBI** — Hoang et al., _Real-Time Digital Twins for Type 1 Diabetes with Simulation-Based Inference_, arXiv:2507.01740, 2025.
-- **UKF** — Hajizadeh et al., _Plasma Insulin Estimation in People with Type 1 Diabetes Mellitus_, 2018. The published method estimates plasma insulin on Hovorka's model and is validated against intravenous assays; this implementation retargets it to glucose on the ReplayBG model and is not a reproduction of that result.
-- **Simulator** — Dalla Man et al., _The UVA/PADOVA Type 1 Diabetes Simulator: New Features_, 2014, via Xie's `simglucose`.
-- **Risk kernel** — Magni et al., _Model Predictive Control of Type 1 Diabetes: An in Silico Trial_, 2007.
-- **Statistical protocol** — Demšar, _Statistical Comparisons of Classifiers over Multiple Data Sets_, JMLR, 2006.
-
-None of the six methods evaluated here is validated for clinical use, and no result in this repository is treatment guidance.
+If you use this code or benchmark, please cite our paper: [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX).

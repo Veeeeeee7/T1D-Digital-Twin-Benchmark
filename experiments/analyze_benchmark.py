@@ -360,7 +360,7 @@ def main() -> None:
     n_pat = len({r["patient"] for r in dec})
     n_day = len({r["day"] for r in dec})
 
-    L = [f"# Benchmark results", "",
+    L = ["# Benchmark results", "",
          f"source: `{dec_path}`", "",
          f"- patients: **{n_pat}**   test days: **{n_day}**   "
          f"methods: {', '.join(methods)}",

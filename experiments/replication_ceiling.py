@@ -15,7 +15,6 @@ _root = os.path.dirname(_here)
 if os.path.isdir(os.path.join(_root, "t1d_twin")) and _root not in sys.path:
     sys.path.insert(0, _root)
 
-from t1d_twin import value as V                     # noqa: E402
 from experiments import patients as PT              # noqa: E402
 from experiments import scenario as SC              # noqa: E402
 from experiments import scoring as SCORE            # noqa: E402

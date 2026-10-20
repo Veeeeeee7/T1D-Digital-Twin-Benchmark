@@ -29,10 +29,6 @@ from .twin import Twin
 PRIOR_LO = _priors.SUPPORT_LO.copy()
 PRIOR_HI = _priors.SUPPORT_HI.copy()
 
-# Keep old private names as aliases for test-file compatibility
-_PRIOR_LO = PRIOR_LO
-_PRIOR_HI = PRIOR_HI
-
 # Default noise std [mg/dL] — matches Dexcom empirical std (~10 mg/dL)
 DEFAULT_SIGMA: float = 10.0
 

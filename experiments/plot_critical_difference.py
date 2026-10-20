@@ -1,9 +1,6 @@
 """Critical difference diagrams for the paper — one panel per metric, stacked.
 
-Wilcoxon–Holm form: methods sit at their mean rank, and every maximal group
-the Holm-corrected pairwise tests cannot separate is one bar with a filled dot
-on each member. Where a bar passes over the leader of a method outside the
-group, an open circle marks the crossing.
+Filled dot = member of an unseparated group; open circle = crossed but excluded.
 """
 from __future__ import annotations
 
@@ -35,9 +32,7 @@ PRETTY = {**PRETTY_METHOD,
 LOWER_IS_BETTER = ("regret_norm", "regret", "rmse", "mard")
 
 # --- drawing constants -----------------------------------------------------
-# Vertical geometry is in POINTS, the axis line at y = 0 and the panel sized to
-# its content, so the figure is as short as what it holds. Horizontal geometry
-# is in rank units. Fonts in points.
+# Vertical geometry and fonts are in points; horizontal geometry in rank units.
 FS_TICK = 7.0       # rank numbers on the axis
 FS_LABEL = 7.0      # method names
 FS_TAG = 8.0        # the rotated "RMSE" gutter label
@@ -61,20 +56,12 @@ PT_BOTTOM = 4.5     # below the last label row
 PT_PANEL_GAP = 4.0  # between stacked panels
 X_MARGIN = 0.26     # room for the method labels, as a fraction of the rank span
 X_ELBOW = 0.045     # how far past the axis ends the elbow runs, same units
-X_TIE = 0.03        # DISPLAY-ONLY spread between exactly-tied mean ranks, same
-                    # units. Two methods at one x share a leader, so a dot
-                    # there names neither of them; see _display_x.
+X_TIE = 0.03        # display-only spread between exactly-tied mean ranks
 X_BAR_GAP = 0.15    # two bars closer than this never share a level
 
 
 def _display_x(R: np.ndarray, order: np.ndarray, span: float) -> np.ndarray:
-    """Drawing positions: mean rank, with exactly-tied methods spread apart.
-
-    Tied methods otherwise share one vertical leader, and a member dot on it
-    identifies neither. Spreading them symmetrically about the shared rank, in
-    ``order`` sequence, gives every method its own leader. Labels keep the true
-    mean rank; only the drawing moves, by well under the half-unit minor tick.
-    """
+    """Drawing positions: mean rank, with exactly-tied methods spread apart in ``order``."""
     x = R.astype(float).copy()
     groups: dict[float, list[int]] = {}
     for j in order:
@@ -87,14 +74,7 @@ def _display_x(R: np.ndarray, order: np.ndarray, span: float) -> np.ndarray:
 
 
 def maximal_cliques(same: np.ndarray) -> list[tuple[int, ...]]:
-    """Maximal groups in which every pair is non-separated, singletons dropped.
-
-    ``same`` is the symmetric boolean non-separation matrix. Bron–Kerbosch with
-    pivoting; k is a handful of methods, so this is instantaneous. Unlike a
-    contiguous run, a clique may skip over a method that sits between two of
-    its members on the rank axis but IS separated from one of them — that is
-    exactly the case a bar drawn as a plain interval cannot show.
-    """
+    """Maximal cliques of the non-separation matrix ``same`` (Bron–Kerbosch), singletons dropped."""
     k = int(same.shape[0])
     adj = [{j for j in range(k) if j != i and bool(same[i, j])} for i in range(k)]
     out: list[tuple[int, ...]] = []
@@ -115,12 +95,7 @@ def maximal_cliques(same: np.ndarray) -> list[tuple[int, ...]]:
 
 
 def bar_levels(intervals: list[tuple[float, float]]) -> list[int]:
-    """First-fit level per bar; bars that overlap or touch never share one.
-
-    ``intervals`` are (left, right) in rank units. Two bars on one level would
-    read as a single group, so a shared member — or anything closer than
-    ``X_BAR_GAP`` — forces separate levels. Level 0 is nearest the axis.
-    """
+    """First-fit level per bar; bars closer than ``X_BAR_GAP`` never share one (0 = nearest the axis)."""
     idx = sorted(range(len(intervals)), key=lambda i: intervals[i])
     levels = [0] * len(intervals)
     placed: list[list[tuple[float, float]]] = []
@@ -138,12 +113,7 @@ def bar_levels(intervals: list[tuple[float, float]]) -> list[int]:
 
 
 def bar_crossings(cliques: list[tuple[int, ...]], X: np.ndarray) -> list[tuple[int, ...]]:
-    """Per clique, the non-members whose leader the bar passes over.
-
-    A bar spans from its leftmost to its rightmost member; any other method
-    drawn strictly inside that span is crossed and gets an open circle, so the
-    reader never has to infer membership from the absence of a mark.
-    """
+    """Per clique, the non-members drawn strictly inside the bar's span."""
     out = []
     for c in cliques:
         lo, hi = float(X[list(c)].min()), float(X[list(c)].max())
@@ -154,18 +124,7 @@ def bar_crossings(cliques: list[tuple[int, ...]], X: np.ndarray) -> list[tuple[i
 
 def label_rows(side: list[int], X: np.ndarray, x_gutter: float,
                bars: list[tuple[float, float, float]]) -> dict[int, float]:
-    """Row height (points) per method on one side, packed from the axis down.
-
-    Each method's leader runs horizontally from its x to ``x_gutter``. Rows
-    start at ``PT_LABEL0`` and step ``PT_LABEL_STEP`` down the side, and a row
-    drops further only when its leader would run into a bar: any bar whose
-    span (padded by ``X_BAR_GAP``) overlaps the leader and sits within
-    ``PT_CLEAR`` points vertically. Bars live in the middle of the axis and
-    leaders on its flanks, so most rows interleave with the bars instead of
-    stacking beneath them. A bar that contains or crosses a method's x always
-    overlaps its leader, so every leader is pushed below every dot or ring it
-    carries.
-    """
+    """Label row (points) per method on one side, dropped only where its leader would hit a bar."""
     rows: dict[int, float] = {}
     y = PT_LABEL0
     for j in side:
@@ -183,12 +142,7 @@ def label_rows(side: list[int], X: np.ndarray, x_gutter: float,
 
 
 def layout(pp: dict, methods, metric: str, alpha: float) -> dict:
-    """Everything one panel needs, computed before any drawing.
-
-    Returns the roster, mean ranks, drawing x, the cliques with their bar
-    levels, the label row per method, and the panel's vertical extent in
-    points, so the figure can be sized to its content up front.
-    """
+    """Everything one panel needs, including its height in points, computed before drawing."""
     used, idx_pairs, _deltas, _raw, holm = holm_pairwise(pp, metric, methods)
     keep, vals, _ = _matrix(pp, methods, metric)
     if not used:
@@ -211,10 +165,7 @@ def layout(pp: dict, methods, metric: str, alpha: float) -> dict:
     bars = [(lo, hi, PT_BAR0 - PT_BAR_STEP * lvl)
             for (lo, hi), lvl in zip(intervals, levels)]
 
-    # Split by COUNT, not by axis midpoint: mean ranks cluster toward the good
-    # end, so a midpoint split leaves one side crowded and the other nearly
-    # empty. Ceil goes left, so an odd roster puts the extra method with the
-    # better-ranked group.
+    # Split labels by count, not by axis midpoint; an odd extra goes left.
     half = (k + 1) // 2
     left = [int(j) for j in order[:half]]
     right = [int(j) for j in order[half:]][::-1]        # far side first
@@ -263,8 +214,6 @@ def _panel(ax, lay: dict) -> None:
                     ha=ha, va="center", fontsize=FS_LABEL)
 
     # --- non-separation bars ---------------------------------------------
-    # One polyline per maximal clique, a filled dot on every member; an open
-    # circle where the bar passes over the leader of a method outside it.
     for clique, (_, _, y), crossed in zip(lay["cliques"], lay["bars"],
                                           lay["crossings"]):
         xs = sorted(float(X[j]) for j in clique)
@@ -277,9 +226,7 @@ def _panel(ax, lay: dict) -> None:
                     markeredgecolor="black", markeredgewidth=LW_RING,
                     zorder=5)
 
-    # --- panel tag -------------------------------------------------------
-    # Runs vertically in the left gutter, OUTSIDE the axes, so it costs the
-    # drawing no width and no height.
+    # --- panel tag, rotated in the left gutter outside the axes ----------
     ax.text(-0.012, 0.5, PRETTY.get(lay["metric"], lay["metric"]),
             transform=ax.transAxes, rotation=90, rotation_mode="anchor",
             ha="center", va="bottom", fontsize=FS_TAG)
@@ -302,10 +249,8 @@ def main() -> None:
                          "must match the roster the paper reports")
     ap.add_argument("--alpha", type=float, default=0.05)
     ap.add_argument("--width", type=float, default=5.5,
-                    help="inches; 5.5 is the neurips_2026 textwidth, so a "
-                         "width=\\linewidth include is 1:1 and the point sizes "
-                         "here are the point sizes on the page. Height is "
-                         "derived from the content, in points")
+                    help="inches; 5.5 is the paper's textwidth, so the figure "
+                         "is 1:1 under width=\\linewidth. Height follows content")
     args = ap.parse_args()
 
     dec_path = args.decisions or OP.decisions_table_path()
@@ -335,8 +280,7 @@ def main() -> None:
                                         "DejaVu Serif"],
                          "mathtext.fontset": "stix",
                          "pdf.fonttype": 42, "ps.fonttype": 42})
-    # Each axes is exactly its extent tall, so one y unit is one point: the
-    # figure is the panels plus the gaps, and nothing else.
+    # Each axes is exactly its extent tall, so one y unit is one point.
     n = len(lays)
     fig_h = (sum(extents) + PT_PANEL_GAP * (n - 1)) / 72.0
     fig, axes = plt.subplots(n, 1, figsize=(args.width, fig_h),

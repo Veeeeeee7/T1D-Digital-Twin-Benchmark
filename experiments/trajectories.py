@@ -18,19 +18,13 @@ if os.path.isdir(os.path.join(_root, "t1d_twin")) and _root not in sys.path:
     sys.path.insert(0, _root)
 
 from t1d_twin import value as V                     # noqa: E402
-from t1d_twin import units                          # noqa: E402
 from experiments import patients as PT              # noqa: E402
 from experiments import scenario as SC              # noqa: E402
 from experiments import output_paths as OP          # noqa: E402
 
 
 def _warm_font_cache() -> None:
-    """Build matplotlib's font cache in the parent before any worker spawns.
-
-    simglucose imports matplotlib, and a ``spawn`` pool re-imports it in every
-    child; a cold cache then has N workers building it at once in one
-    MPLCONFIGDIR, which can deadlock. Touching it here makes it warm for them.
-    """
+    """Build matplotlib's font cache before spawning, so workers cannot race to build it."""
     os.environ.setdefault("MPLBACKEND", "Agg")
     os.environ.setdefault(
         "MPLCONFIGDIR",

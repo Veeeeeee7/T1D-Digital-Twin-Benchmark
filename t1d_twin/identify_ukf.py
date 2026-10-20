@@ -6,7 +6,7 @@ import numpy as np
 from . import replaybg_priors as _priors
 from .identify_mcmc import DEFAULT_SIGMA, MCMCTwin
 from .replaybg_model import (
-    KE, VI, _deriv, _delayed_insulin, steady_state, theta_to_array,
+    KE, VI, _deriv, _delayed_insulin, steady_state,
 )
 from .simglucose_adapter import RunResult
 

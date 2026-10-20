@@ -1,14 +1,10 @@
 """Virtual patients and the plant run loop for the therapy-ranking benchmark."""
 from __future__ import annotations
 
-import os
 import re
-import hashlib
 import datetime
-from dataclasses import dataclass, field
-from itertools import combinations
+from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 import pkg_resources
 
@@ -19,7 +15,6 @@ from simglucose.simulation.env import T1DSimEnv
 from simglucose.controller.base import Controller, Action
 
 from t1d_twin import units
-from t1d_twin.replaybg_model import THETA_NAMES
 from t1d_twin.simglucose_adapter import RunResult
 # scenario owns the cadence, and the cadence comes FROM the sensor row, so the sensor
 # name lives there too.
@@ -64,12 +59,6 @@ def quest_params(name: str) -> dict:
 # Carb-counting-error perturbation (mis-set carb ratio)
 # ---------------------------------------------------------------------------
 CARB_ERROR_ENABLED = False
-
-DEFAULT_DOSE_FRACTIONS = (0.75, 0.85, 1.15, 1.25)
-
-
-# Settable parameter names (everything but the Name label).
-PARAM_NAMES = [c for c in _VP.columns if c != "Name"]
 
 
 def make_patient(params: pd.Series, init_state=None, seed: int | None = None) -> T1DPatient:
@@ -239,31 +228,16 @@ def run_on_patient(params: pd.Series, controller: Controller, scenario, hours: f
 
 
 # ===========================================================================
-# Subject abstraction + patients.csv I/O
+# Subject abstraction
 # ===========================================================================
-_QUEST_COLS = ("CR", "CF", "TDI")
-
-# Cached best-fit ReplayBG parameters (written by derive_replaybg_params.py and read
-# back here so Phase 0/1/2 reuse the fit instead of recomputing it).
-RBG_THETA_COLS = [f"rbg_{n}" for n in THETA_NAMES]
-RBG_EXTRA_COLS = ["rbg_Ib", "rbg_CR_true", "rbg_fit_rmse"]
-RBG_ALL_COLS = RBG_THETA_COLS + RBG_EXTRA_COLS
-
-
 @dataclass
 class Subject:
-    """A (synthetic or base) virtual patient: UVA/Padova params + therapy constants."""
+    """A built-in virtual patient: UVA/Padova params + therapy constants."""
     name: str
     params: "pd.Series"
     quest: dict
-    members: tuple = field(default_factory=tuple)
     cr_true: float | None = None
     dose_mult: float = 1.0
-    # Cached best-fit ReplayBG parameters (None until derive_replaybg_params is run).
-    rbg_theta: "np.ndarray | None" = None
-    rbg_Ib: float | None = None
-    rbg_cr_true: float | None = None
-    rbg_fit_rmse: float | None = None
 
     def __post_init__(self):
         if self.cr_true is None:
@@ -324,4 +298,4 @@ def benchmark_subjects(kinds=DEFAULT_KINDS) -> list["Subject"]:
 def subject_from_base(name: str) -> Subject:
     """Wrap a built-in simglucose patient as a Subject (uses its real CR/CF)."""
     return Subject(name=name, params=patient_params(name),
-                   quest=quest_params(name), members=(name,))
+                   quest=quest_params(name))

@@ -13,11 +13,11 @@ TORCH_THREADS: int = 1
 
 _VERBOSE_DEFAULT = os.environ.get("T1D_VERBOSE") == "1"
 
-from sbi.inference import SNPE, simulate_for_sbi
+from sbi.inference import SNPE
 
 from .replaybg_model import (
     THETA_NAMES,
-    simulate, sample_indices, steady_state, theta_to_array,
+    simulate, sample_indices, steady_state,
 )
 from . import replaybg_priors as _priors
 from .simglucose_adapter import RunResult
@@ -44,9 +44,6 @@ DEFAULT_SIGMA: float = 10.0
 
 # Default NPE posterior samples drawn per identification
 DEFAULT_N_POSTERIOR: int = 1_000
-
-# Fixed log-space transforms for rate params (indices 0-6) same as MCMC
-_LOG_IDX = list(range(_priors.N_LOG_RATES))   # leading rate params are log-transformed
 
 
 # ---------------------------------------------------------------------------
@@ -147,18 +144,15 @@ def generate_training_data(
     verbose: bool = _VERBOSE_DEFAULT,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Generate (θ, y) training pairs with rejection sampling."""
-    rng_phi = np.random.default_rng(seed)
     rng_noise = np.random.default_rng(seed + 1)
 
-    # seed the prior itself — prior.sample() is what draws the training thetas
-    # (rng_phi below is vestigial; see finding C4).
+    # seed the prior itself — prior.sample() is what draws the training thetas.
     prior = make_prior(log_space=log_space, seed=seed)
     simulator, n_obs = make_simulator(
         insulin, cho, Ib, sample_time, dt, sigma=0.0,  # we add noise below
         log_space=log_space, seed=seed + 2,
     )
 
-    T = len(insulin)
     obs_idx = sample_indices(n_obs, sample_time, dt)
 
     accepted_phi: list[np.ndarray] = []
@@ -314,15 +308,11 @@ def generate_training_data_ic(
     verbose: bool = _VERBOSE_DEFAULT,
 ) -> Tuple["torch.Tensor", "torch.Tensor", np.ndarray, np.ndarray]:
     """Training pairs for joint IC inference: theta-hat = [phi(8), x0(9)] and y."""
-    rng_phi = np.random.default_rng(seed)
     rng_x0 = np.random.default_rng(seed + 3)
     rng_noise = np.random.default_rng(seed + 1)
 
-    # seed the prior itself — prior.sample() is what draws the training thetas
-    # (rng_phi below is vestigial; see finding C4).
+    # seed the prior itself — prior.sample() is what draws the training thetas.
     prior = make_prior(log_space=True, seed=seed)
-    T = len(insulin)
-    n_obs = T // int(round(sample_time / dt))
 
     kept_theta_hat: list[np.ndarray] = []
     kept_obs: list[np.ndarray] = []
