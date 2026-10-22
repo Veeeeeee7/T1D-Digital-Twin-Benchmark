@@ -90,29 +90,29 @@ $T1D_OUTPUT_ROOT/
 
 ## 4. Benchmark Design
 
-| Component             | Choice                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| Simulator             | `simglucose` (UVA/Padova), treated as a black box                                                         |
-| Patients              | 30 virtual patients: 10 adults, 10 adolescents, 10 children                                               |
-| CGM                   | Breton-Kovatchev noise, 5 min interval, 288 samples per 24 h day                                          |
-| Meals                 | `simglucose`'s `RandomScenario`, one independent draw per day, shared by every treatment and method       |
-| Baseline treatment π₀ | the patient's own basal rate, carbohydrate ratio and correction factor                                    |
-| Candidate treatments  | 20 counterfactuals: meal bolus or basal rate scaled by −50% to +50% in 10% steps, the other unchanged     |
-| Correction bolus      | computed from noise-free interstitial glucose (IG), so the true ranking is deterministic                  |
-| Treatment switch      | every run starts on π₀ at midnight and switches to the candidate at 05:00, when the scored window opens   |
-| Risk kernel           | reward R = negative total Magni risk over the scored 24 h window, glucose clipped to [40, 400] mg/dL      |
-| Training data         | 30 independent identification days under π₀                                                              |
-| Evaluation data       | 10 independent identification days × 20 candidate treatments                                              |
+| Component             | Choice                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| Simulator             | `simglucose` (UVA/Padova), treated as a black box                                                       |
+| Patients              | 30 virtual patients: 10 adults, 10 adolescents, 10 children                                             |
+| CGM                   | Breton-Kovatchev noise, 5 min interval, 288 samples per 24 h day                                        |
+| Meals                 | `simglucose`'s `RandomScenario`, one independent draw per day, shared by every treatment and method     |
+| Baseline treatment π₀ | the patient's own basal rate, carbohydrate ratio and correction factor                                  |
+| Candidate treatments  | 20 counterfactuals: meal bolus or basal rate scaled by −50% to +50% in 10% steps, the other unchanged   |
+| Correction bolus      | computed from noise-free interstitial glucose (IG), so the true ranking is deterministic                |
+| Treatment switch      | every run starts on π₀ at midnight and switches to the candidate at 05:00, when the scored window opens |
+| Risk kernel           | reward R = negative total Magni risk over the scored 24 h window, glucose clipped to [40, 400] mg/dL    |
+| Training data         | 30 independent identification days under π₀                                                             |
+| Evaluation data       | 10 independent identification days × 20 candidate treatments                                            |
 
 Every metric is computed per patient and evaluation day on noise-free IG:
 
-| Family              | Metric      | Definition                                                                    |
-| ------------------- | ----------- | ----------------------------------------------------------------------------- |
-| Prediction accuracy | RMSE        | root mean squared error between predicted and true IG, averaged over the 20 treatments |
-|                     | MARD        | mean absolute relative difference, averaged over the 20 treatments            |
+| Family              | Metric      | Definition                                                                                  |
+| ------------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| Prediction accuracy | RMSE        | root mean squared error between predicted and true IG, averaged over the 20 treatments      |
+|                     | MARD        | mean absolute relative difference, averaged over the 20 treatments                          |
 | Decision quality    | Spearman    | rank correlation between the DT's and the patient's ranking of the treatments (**primary**) |
-|                     | Regret      | true reward of the true best treatment minus that of the DT's top treatment   |
-|                     | Regret Norm | Regret divided by the range of true rewards across the treatments             |
+|                     | Regret      | true reward of the true best treatment minus that of the DT's top treatment                 |
+|                     | Regret Norm | Regret divided by the range of true rewards across the treatments                           |
 
 ---
 
@@ -155,14 +155,14 @@ Each DT is fit once from its identification window and then generates the 10 × 
 
 Each method uses the amount of training data its original implementation prescribes. The identification windows are fixed in `run_benchmark.METHOD_FIT_HOURS` / `METHOD_FIT_DAYS` and are not command-line options:
 
-| Method                         | Role             | Identification Window                    | Fit + Score (per patient, 1 core) |
-| ------------------------------ | ---------------- | ---------------------------------------- | --------------------------------: |
-| `mcmc` — MCMC                  | published method | one 22 h window (264 CGM samples)        |                          8 h 18 m |
-| `sbi` — SBI                    | published method | one 22 h window (264 CGM samples)        |                             245 s |
-| `ukf` — UKF                    | published method | one 22 h window (264 CGM samples)        |                             181 s |
-| `prior` — Average patient      | baseline         | none (reads no CGM)                      |                             175 s |
-| `neural` — Neural              | baseline         | all 30 training days (8,640 CGM samples) |                             2.4 s |
-| `linear` — Linear              | baseline         | all 30 training days (8,640 CGM samples) |                             0.1 s |
+| Method                    | Role             | Identification Window                    | Fit + Score (per patient, 1 core) |
+| ------------------------- | ---------------- | ---------------------------------------- | --------------------------------: |
+| `mcmc` — MCMC             | published method | one 22 h window (264 CGM samples)        |                          8 h 18 m |
+| `sbi` — SBI               | published method | one 22 h window (264 CGM samples)        |                             245 s |
+| `ukf` — UKF               | published method | one 22 h window (264 CGM samples)        |                             181 s |
+| `prior` — Average patient | baseline         | none (reads no CGM)                      |                             175 s |
+| `neural` — Neural         | baseline         | all 30 training days (8,640 CGM samples) |                             2.4 s |
+| `linear` — Linear         | baseline         | all 30 training days (8,640 CGM samples) |                             0.1 s |
 
 Costs are medians over the 30 patients and cover the fit _and_ all 200 predicted trajectories; see [§8](#8-hardware).
 
@@ -273,12 +273,12 @@ Cost of fitting one patient and scoring all 20 candidate treatments on a **singl
 
 By job:
 
-| job                                                                                     | wall clock | core-hours |
-| --------------------------------------------------------------------------------------- | ---------: | ---------: |
+| job                                                                                      | wall clock | core-hours |
+| ---------------------------------------------------------------------------------------- | ---------: | ---------: |
 | trajectory cache — 30 patients × (30 training days + 10 evaluation days × 20 treatments) |    1,182 s |        9.9 |
-| the five fast methods, one job                                                          |      861 s |        5.5 |
-| MCMC, separately                                                                        |   8 h 30 m |        249 |
-| **total**                                                                               |            |    **264** |
+| the five fast methods, one job                                                           |      861 s |        5.5 |
+| MCMC, separately                                                                         |   8 h 30 m |        249 |
+| **total**                                                                                |            |    **264** |
 
 ---
 
