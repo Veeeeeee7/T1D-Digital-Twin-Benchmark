@@ -1,8 +1,8 @@
 # Evaluating Type-1 Diabetes Digital Twins by Decision Quality
 
-[![arXiv](https://img.shields.io/badge/arXiv-coming%20soon-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX)
+[![arXiv](https://img.shields.io/badge/arXiv-2610.30577-b31b1b.svg)](https://arxiv.org/abs/2610.30577)
 
-**Paper:** [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX)
+**Paper:** [arXiv:2610.30577](https://arxiv.org/abs/2610.30577)
 
 Code for the evaluation protocol and benchmark in the paper. A digital twin (DT) for type 1 diabetes (T1D) is fit to a virtual patient's CGM under their baseline treatment, then generates glucose trajectories under 20 counterfactual insulin treatments it has never seen. A glycemic risk kernel scores each trajectory, which gives the DT's ranking of the candidate treatments. The benchmark scores the DT on **decision quality**, meaning whether that ranking agrees with the patient's true ranking, and reports it alongside **prediction accuracy**, meaning how closely the predicted glucose matches the true glucose.
 
@@ -306,4 +306,4 @@ Implement `t1d_twin.twin.Twin` (`predict_ig` and `summary`; `generate_cgm` comes
 
 ## 11. Citing
 
-If you use this code or benchmark, please cite our paper: [arXiv:XXXX.XXXXX](https://arxiv.org/abs/XXXX.XXXXX).
+If you use this code or benchmark, please cite our paper: [arXiv:2610.30577](https://arxiv.org/abs/2610.30577).
